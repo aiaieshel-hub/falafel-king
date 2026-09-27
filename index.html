@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>מלך הפלאפל</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#172c29;
+    font-family: "Heebo","Segoe UI",Arial,sans-serif; touch-action:none;
+    user-select:none; -webkit-user-select:none; }
+  #wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  canvas { display:block; border-radius:12px; box-shadow:0 12px 60px rgba(0,0,0,.55); }
+  #muteBtn { position:absolute; bottom:18px; left:max(14px, env(safe-area-inset-left)); z-index:6; width:46px; height:46px;
+    border-radius:14px; background:#203d36; border:2px solid #e7c37b;
+    color:#fff; font-size:20px; cursor:pointer; box-shadow:0 5px 14px #11271d77; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<button id="muteBtn" title="השתקה">🔊</button>
+<script>
+"use strict";
+/* ================= מלך הפלאפל - משחק דוכן אידל ================= */
+const W = 760, H = 1240;
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let scale = 1, offX = 0, offY = 0, dpr = 1;
+
+function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const ww = window.innerWidth, wh = window.innerHeight;
+  scale = Math.min(ww / W, wh / H);
+  cv.style.width  = (W * scale) + 'px';
+  cv.style.height = (H * scale) + 'px';
+  cv.width  = Math.round(W * scale * dpr);
+  cv.height = Math.round(H * scale * dpr);
+  offX = 0; offY = 0;
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---------------- צלילים (WebAudio קטן) ---------------- */
+let AC = null, muted = false, soundUnlocked = false;
+['pointerdown','touchstart','keydown'].forEach(type => window.addEventListener(type, () => { soundUnlocked = true; }, {once:true}));
+function beep(freq, dur, type, vol){
+  if (muted || !soundUnlocked) return;
+  try {
+    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === 'suspended') AC.resume();
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol || .12, AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001, AC.currentTime + (dur || .08));
+    o.connect(g); g.connect(AC.destination);
+    o.start(); o.stop(AC.currentTime + (dur || .08));
+  } catch(e){}
+}
+const sndPick  = () => beep(520, .06, 'triangle', .07);
+const sndDrop  = () => beep(300, .07, 'triangle', .08);
+const sndCash  = () => { beep(880, .07, 'square', .06); setTimeout(()=>beep(1320,.09,'square',.06), 60); };
+const sndBuy   = () => { beep(660, .09, 'sine', .1); setTimeout(()=>beep(990,.12,'sine',.1), 90); };
+const sndSell  = () => beep(740, .08, 'triangle', .08);
+document.getElementById('muteBtn').addEventListener('click', function(){
+  muted = !muted; this.textContent = muted ? '🔇' : '🔊';
+});
+
+/* ---------------- מצב המשחק ---------------- */
+const S = {
+  money: 0,
+  price: 5,
+  capacity: 8,
+  processTime: 1.2,
+  t: 0, heat: 0, heatRate: .10, cooldown: 0,
+  upgradesBought: 0,
+  earned: 0, stage: 1, missed: 0, served: 0, bonus: 0, notice: '', noticeT: 0,
+};
+const player = {
+  x: 380, y: 595, vx: 0, vy: 0, speed: 265,
+  carrying: null,   // 'pea' | 'falafel'
+  carryN: 0,
+  face: 1, bob: 0, moving: false,
+};
+const field = { x: 55, y: 150, w: 265, h: 360, peas: 40, maxPeas: 40, regrow: 0 };
+const machine = { x: 470, y: 150, w: 235, h: 200, input: 0, output: 0, prog: 0,
+  inPad:  { x: 585, y: 405, r: 62 },
+  outPad: { x: 585, y: 505, r: 62 } };
+const stall = { x: 190, y: 860, w: 380, h: 90, stock: 0, moneyPile: 0,
+  dropPad:  { x: 132, y: 985, r: 56 },
+  moneyPad: { x: 650, y: 897, r: 52 } };
+const queueSlots = [];
+for (let i = 0; i < 6; i++) queueSlots.push({ x: 640 - i * 92, y: 1010 });
+
+const upgrades = [
+  { key:'cap',   name:'קיבולת',    icon:'🎒', x: 120, y: 700, r: 58, level: 0,
+    cost: l => 40 + l * 60,
+    desc: l => 'יותר סחורה · הליכה איטית יותר',
+    apply(){ S.capacity += 4; player.speed = Math.max(175, player.speed - 13); } },
+  { key:'price', name:'מחיר',      icon:'🏷️', x: 380, y: 680, r: 58, level: 0,
+    cost: l => 50 + l * 75,
+    desc: l => 'רווח גבוה · סבלנות נמוכה',
+    apply(){ S.price += 2; } },
+  { key:'speed', name:'טיגון מהיר', icon:'🔥', x: 640, y: 700, r: 58, level: 0,
+    cost: l => 60 + l * 90,
+    desc: l => 'מהיר · הפסקות קירור',
+    apply(){ S.processTime = Math.max(.42, S.processTime * .78); S.heatRate += .04; } },
+];
+upgrades.forEach(u => { u.holdT = 0; u.armed = true; });
+
+const customers = [];
+let spawnT = 2.2;
+const floats = [];    // טקסטים צפים
+const parts = [];     // חלקיקי אבק
+let pickAcc = 0, dropAcc = 0, pickAcc2 = 0, dropAcc2 = 0, cashAcc = 0, serveAcc = 0;
+
+const SHIRTS = ['#4a90d9','#d94a6a','#58b368','#e2a13c','#9b59b6','#3fb9a8','#d97c4a'];
+function spawnCustomer(){
+  if (customers.filter(c => c.state !== 'leave').length >= 6) return;
+  const want = 1 + Math.floor(Math.random() * 3);
+  customers.push({
+    x: 790, y: 1090, want,
+    shirt: SHIRTS[Math.floor(Math.random() * SHIRTS.length)],
+    state: 'walk', slot: -1, sway: Math.random() * 6, hat: Math.random() < .3, patience: Math.max(23, 73 - (S.stage-1)*5 - (S.price-5)*2), maxPatience: Math.max(23, 73 - (S.stage-1)*5 - (S.price-5)*2),
+  });
+}
+function assignSlots(){
+  let i = 0;
+  for (const c of customers) if (c.state === 'walk' || c.state === 'queue') c.slot = i++;
+}
+
+/* ---------------- קלט: ג'ויסטיק וירטואלי + מקלדת ---------------- */
+const joy = { active: false, id: -1, ox: 0, oy: 0, dx: 0, dy: 0 };
+const keys = {};
+function toWorld(cx, cy){
+  const r = cv.getBoundingClientRect();
+  return { x: (cx - r.left) / scale, y: (cy - r.top) / scale };
+}
+cv.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.changedTouches[0];
+  const p = toWorld(t.clientX, t.clientY);
+  joy.active = true; joy.id = t.identifier; joy.ox = p.x; joy.oy = p.y; joy.dx = 0; joy.dy = 0;
+}, { passive:false });
+cv.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) if (t.identifier === joy.id){
+    const p = toWorld(t.clientX, t.clientY);
+    let dx = p.x - joy.ox, dy = p.y - joy.oy;
+    const d = Math.hypot(dx, dy), m = 90;
+    if (d > m){ dx = dx / d * m; dy = dy / d * m; }
+    joy.dx = dx / m; joy.dy = dy / m;
+  }
+}, { passive:false });
+const endTouch = e => {
+  for (const t of e.changedTouches) if (t.identifier === joy.id){
+    joy.active = false; joy.dx = 0; joy.dy = 0;
+  }
+};
+cv.addEventListener('touchend', endTouch);
+cv.addEventListener('touchcancel', endTouch);
+cv.addEventListener('mousedown', e => {
+  const p = toWorld(e.clientX, e.clientY);
+  joy.active = true; joy.id = 'm'; joy.ox = p.x; joy.oy = p.y; joy.dx = 0; joy.dy = 0;
+});
+window.addEventListener('mousemove', e => {
+  if (!joy.active || joy.id !== 'm') return;
+  const p = toWorld(e.clientX, e.clientY);
+  let dx = p.x - joy.ox, dy = p.y - joy.oy;
+  const d = Math.hypot(dx, dy), m = 90;
+  if (d > m){ dx = dx / d * m; dy = dy / d * m; }
+  joy.dx = dx / m; joy.dy = dy / m;
+});
+window.addEventListener('mouseup', () => { if (joy.id === 'm'){ joy.active = false; joy.dx = 0; joy.dy = 0; } });
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keyup',   e => { keys[e.key.toLowerCase()] = false; });
+
+/* ---------------- עזרים ---------------- */
+const dist   = (x1,y1,x2,y2) => Math.hypot(x2-x1, y2-y1);
+const inRect = (px,py,r) => px > r.x && px < r.x + r.w && py > r.y && py < r.y + r.h;
+const clamp  = (v,a,b) => Math.max(a, Math.min(b, v));
+function addFloat(x, y, text, color){ floats.push({ x, y, text, color: color || '#fff', t: 0 }); }
+function addDust(x, y){
+  parts.push({ x, y, vx: (Math.random()-.5)*40, vy: -20 - Math.random()*30, t: 0, r: 3 + Math.random()*4 });
+}
+function rr(x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ---------------- לולאת משחק ---------------- */
+let last = performance.now();
+function loop(now){
+  let dt = (now - last) / 1000; last = now;
+  dt = Math.min(dt, .05);
+  S.t += dt;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function update(dt){
+  /* תנועה */
+  let mx = joy.dx, my = joy.dy;
+  if (keys['arrowleft'] || keys['a']) mx -= 1;
+  if (keys['arrowright']|| keys['d']) mx += 1;
+  if (keys['arrowup']   || keys['w']) my -= 1;
+  if (keys['arrowdown'] || keys['s']) my += 1;
+  const ml = Math.hypot(mx, my);
+  if (ml > 1){ mx /= ml; my /= ml; }
+  player.moving = ml > .12;
+  if (player.moving){
+    player.x = clamp(player.x + mx * player.speed * dt, 30, W - 30);
+    player.y = clamp(player.y + my * player.speed * dt, 120, H - 40);
+    if (Math.abs(mx) > .1) player.face = mx > 0 ? 1 : -1;
+    player.bob += dt * 11;
+    if (Math.random() < dt * 9) addDust(player.x - player.face * 8, player.y + 26);
+  } else {
+    player.bob += dt * 2;
+  }
+
+  /* חומוס: צמיחה מחדש + איסוף */
+  field.regrow += dt;
+  if (field.regrow > .45 && field.peas < field.maxPeas){ field.peas++; field.regrow = 0; }
+  if (inRect(player.x, player.y, field) && field.peas > 0 &&
+      (player.carrying === null || player.carrying === 'pea') && player.carryN < S.capacity){
+    pickAcc += dt;
+    while (pickAcc > .09 && field.peas > 0 && player.carryN < S.capacity){
+      pickAcc -= .09; field.peas--; player.carrying = 'pea'; player.carryN++;
+      if (player.carryN % 3 === 0 || player.carryN === S.capacity) sndPick();
+    }
+  } else pickAcc = 0;
+
+  /* מכונת טיגון: הפקדה, עיבוד, איסוף פלאפל */
+  if (dist(player.x, player.y, machine.inPad.x, machine.inPad.y) < machine.inPad.r &&
+      player.carrying === 'pea' && player.carryN > 0){
+    dropAcc += dt;
+    while (dropAcc > .07 && player.carryN > 0){
+      dropAcc -= .07; player.carryN--; machine.input++; sndDrop();
+    }
+    if (player.carryN === 0) player.carrying = null;
+  } else dropAcc = 0;
+
+  if (S.cooldown > 0){
+    S.cooldown = Math.max(0, S.cooldown - dt);
+    S.heat = Math.max(0, S.heat - dt * .5);
+  } else if (machine.input > 0){
+    S.heat = Math.min(1, S.heat + dt * S.heatRate);
+    if (S.heat >= 1){ S.cooldown = 3.2; S.notice = 'הטיגון מתחמם · רגע לקירור'; S.noticeT = 2; }
+    machine.prog += dt;
+    if (machine.prog >= S.processTime){
+      machine.prog = 0; machine.input--; machine.output++;
+    }
+  } else { machine.prog = 0; S.heat = Math.max(0, S.heat - dt * .24); }
+
+  if (dist(player.x, player.y, machine.outPad.x, machine.outPad.y) < machine.outPad.r &&
+      machine.output > 0 && (player.carrying === null || player.carrying === 'falafel') && player.carryN < S.capacity){
+    pickAcc2 += dt;
+    while (pickAcc2 > .09 && machine.output > 0 && player.carryN < S.capacity){
+      pickAcc2 -= .09; machine.output--; player.carrying = 'falafel'; player.carryN++;
+      if (player.carryN % 3 === 0 || player.carryN === S.capacity) sndPick();
+    }
+  } else pickAcc2 = 0;
+
+  /* דוכן: הפקדת פלאפל */
+  if (dist(player.x, player.y, stall.dropPad.x, stall.dropPad.y) < stall.dropPad.r &&
+      player.carrying === 'falafel' && player.carryN > 0){
+    dropAcc2 += dt;
+    while (dropAcc2 > .07 && player.carryN > 0){
+      dropAcc2 -= .07; player.carryN--; stall.stock++; sndDrop();
+    }
+    if (player.carryN === 0) player.carrying = null;
+  } else dropAcc2 = 0;
+
+  /* איסוף כסף */
+  if (dist(player.x, player.y, stall.moneyPad.x, stall.moneyPad.y) < stall.moneyPad.r && stall.moneyPile > 0){
+    cashAcc += dt;
+    if (cashAcc > .15){
+      cashAcc = 0;
+      addFloat(stall.moneyPad.x, stall.moneyPad.y - 40, '+₪' + stall.moneyPile, '#7dff9a');
+      S.money += stall.moneyPile; S.earned += stall.moneyPile; stall.moneyPile = 0; sndCash();
+      const next = stageGoal(S.stage);
+      if (S.earned >= next){
+        S.stage++; S.bonus = 22; S.notice = 'שלב ' + S.stage + ' נפתח · זמן בונוס!'; S.noticeT = 4;
+        beep(1000,.15,'sine',.1);
+      }
+    }
+  } else cashAcc = 0;
+
+  /* לקוחות */
+  spawnT -= dt;
+  if (spawnT <= 0){
+    spawnCustomer();
+    const base = Math.max(1.45, 4.3 - (S.stage-1)*.38);
+    spawnT = (base + Math.random()*.9) * (S.bonus > 0 ? .72 : 1);
+  }
+  S.bonus = Math.max(0, S.bonus - dt);
+  S.noticeT = Math.max(0, S.noticeT - dt);
+  assignSlots();
+  for (const c of customers){
+    c.sway += dt * 4;
+    if (c.state === 'walk' || c.state === 'queue'){
+      c.patience -= dt;
+      if (c.patience <= 0){ c.state = 'leave'; S.missed++; addFloat(c.x,c.y-65,'הלך לקוח','#c85143'); continue; }
+      const sl = queueSlots[Math.min(c.slot, queueSlots.length - 1)];
+      const dx = sl.x - c.x, dy = sl.y - c.y, d = Math.hypot(dx, dy);
+      if (d > 8){ c.x += dx / d * 150 * dt; c.y += dy / d * 150 * dt; c.state = 'walk'; }
+      else c.state = 'queue';
+    } else if (c.state === 'leave'){
+      c.x += 170 * dt; c.y += 40 * dt;
+    }
+  }
+  /* הגשה */
+  const front = customers.find(c => c.state === 'queue' && c.slot === 0);
+  if (front && stall.stock >= front.want){
+    serveAcc += dt;
+    if (serveAcc > .55){
+      serveAcc = 0;
+      stall.stock -= front.want;
+      const pay = front.want * S.price * (S.bonus > 0 ? 2 : 1);
+      S.served++;
+      stall.moneyPile += pay;
+      addFloat(front.x, front.y - 70, '+₪' + pay, '#ffe27a');
+      front.state = 'leave'; sndSell();
+    }
+  } else serveAcc = 0;
+  for (let i = customers.length - 1; i >= 0; i--)
+    if (customers[i].x > W + 60) customers.splice(i, 1);
+
+  /* שדרוגים */
+  for (const u of upgrades){
+    const cost = u.cost(u.level);
+    const on = dist(player.x, player.y, u.x, u.y) < u.r;
+    if (!on) u.armed = true;
+    if (on && u.armed && S.money >= cost){
+      u.holdT += dt;
+      if (u.holdT >= .8){
+        S.money -= cost; u.level++; u.holdT = 0; u.armed = false; u.apply();
+        S.upgradesBought++;
+        addFloat(u.x, u.y - 60, 'שודרג! ⭐', '#ffd94a'); sndBuy();
+      }
+    } else u.holdT = Math.max(0, u.holdT - dt * 2);
+  }
+
+  /* אפקטים */
+  for (let i = floats.length - 1; i >= 0; i--){
+    floats[i].t += dt; floats[i].y -= 42 * dt;
+    if (floats[i].t > 1.3) floats.splice(i, 1);
+  }
+  for (let i = parts.length - 1; i >= 0; i--){
+    const p = parts[i]; p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.t > .6) parts.splice(i, 1);
+  }
+
+  /* המידע מתעדכן על גבי המגרש */
+}
+
+/* ---------------- ציור ---------------- */
+function draw(){
+  ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  /* רקע חולי */
+  ctx.fillStyle = '#f1dfbc'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(255,255,255,.06)';
+  for (let i = 0; i < 26; i++){
+    const px = (i * 173) % W, py = (i * 389) % H;
+    ctx.beginPath(); ctx.arc(px, py, 14 + (i % 4) * 6, 0, 7); ctx.fill();
+  }
+  drawZones();
+
+  drawField();
+  drawMachine();
+  drawStall();
+  drawUpgradePads();
+  drawDashboard();
+
+  /* ישויות לפי עומק */
+  const ents = [];
+  ents.push({ y: player.y, f: drawPlayer });
+  for (const c of customers) ents.push({ y: c.y, f: () => drawCustomer(c) });
+  ents.sort((a, b) => a.y - b.y).forEach(e => e.f());
+
+  /* אבק */
+  for (const p of parts){
+    ctx.globalAlpha = 1 - p.t / .6;
+    ctx.fillStyle = '#d9c39a';
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  /* טקסטים צפים */
+  ctx.textAlign = 'center';
+  for (const f of floats){
+    ctx.globalAlpha = 1 - f.t / 1.3;
+    ctx.font = '900 26px Heebo, Arial';
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.45)';
+    ctx.strokeText(f.text, f.x, f.y);
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+
+  /* ג'ויסטיק */
+  if (joy.active){
+    ctx.globalAlpha = .28;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(joy.ox, joy.oy, 62, 0, 7); ctx.fill();
+    ctx.globalAlpha = .5;
+    ctx.beginPath(); ctx.arc(joy.ox + joy.dx * 42, joy.oy + joy.dy * 42, 26, 0, 7); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawField(){
+  /* גדר */
+  ctx.fillStyle = '#8b5e34';
+  for (let x = field.x - 8; x < field.x + field.w + 8; x += 34){
+    rr(x, field.y - 16, 8, 22, 3); ctx.fill();
+  }
+  ctx.fillStyle = '#a06b3c';
+  rr(field.x - 12, field.y - 12, field.w + 24, 8, 4); ctx.fill();
+
+  /* אדמה */
+  ctx.fillStyle = '#a9794b';
+  rr(field.x, field.y, field.w, field.h, 18); ctx.fill();
+  ctx.fillStyle = '#96693c';
+  for (let i = 0; i < 4; i++){ rr(field.x + 16, field.y + 30 + i * 82, field.w - 32, 26, 12); ctx.fill(); }
+
+  /* שיחי חומוס */
+  const n = field.peas;
+  for (let i = 0; i < n; i++){
+    const bx = field.x + 30 + (i % 5) * 50, by = field.y + 40 + Math.floor(i / 5) * 44;
+    ctx.fillStyle = '#5e9c48';
+    ctx.beginPath(); ctx.ellipse(bx, by, 17, 12, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#f3e5c0';
+    ctx.beginPath(); ctx.arc(bx - 5, by - 4, 5.5, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx + 6, by - 2, 5.5, 0, 7); ctx.fill();
+  }
+  if (n === 0){
+    ctx.fillStyle = 'rgba(255,255,255,.55)';
+    ctx.font = '700 17px Heebo, Arial'; ctx.textAlign = 'center';
+    ctx.fillText('החומוס צומח...', field.x + field.w / 2, field.y + field.h / 2);
+  }
+  ctx.fillStyle = 'rgba(43,29,18,.6)';
+  ctx.font = '800 16px Heebo, Arial'; ctx.textAlign = 'center';
+
+}
+
+function drawMachine(){
+  const m = machine;
+  /* גוף המכונה */
+  ctx.fillStyle = '#57616e'; rr(m.x, m.y, m.w, m.h, 14); ctx.fill();
+  ctx.fillStyle = '#6b7b8c'; rr(m.x + 8, m.y + 8, m.w - 16, m.h - 40, 10); ctx.fill();
+  /* מחבת שמן */
+  ctx.fillStyle = '#3a3f46'; rr(m.x + 22, m.y + 22, m.w - 44, 74, 10); ctx.fill();
+  ctx.fillStyle = '#e2a13c'; rr(m.x + 30, m.y + 30, m.w - 60, 58, 8); ctx.fill();
+  /* בועות שמן */
+  ctx.fillStyle = 'rgba(255,235,170,.7)';
+  for (let i = 0; i < 5; i++){
+    const bx = m.x + 48 + i * 34, by = m.y + 56 + Math.sin(S.t * 3 + i * 2) * 12;
+    ctx.beginPath(); ctx.arc(bx, by, 4, 0, 7); ctx.fill();
+  }
+  /* כדורים מטוגנים במחבת */
+  const fry = Math.min(machine.input + (machine.prog > 0 ? 1 : 0), 6);
+  ctx.fillStyle = '#8b5a2b';
+  for (let i = 0; i < fry; i++){
+    ctx.beginPath(); ctx.arc(m.x + 55 + i * 32, m.y + 60, 9, 0, 7); ctx.fill();
+  }
+  /* פס התקדמות */
+  ctx.fillStyle = '#2e343b'; rr(m.x + 22, m.y + 112, m.w - 44, 16, 8); ctx.fill();
+  ctx.fillStyle = '#ffb347';
+  const pw = (m.w - 48) * (machine.input > 0 ? machine.prog / S.processTime : 0);
+  if (pw > 2){ rr(m.x + 24, m.y + 114, pw, 12, 6); ctx.fill(); }
+  /* מונה פלט */
+  ctx.fillStyle = '#fff'; ctx.font = '800 15px Heebo, Arial'; ctx.textAlign = 'center';
+  ctx.fillText(S.cooldown > 0 ? 'קירור ' + Math.ceil(S.cooldown) + ' שניות' : 'בתור: ' + machine.input + ' · מוכן: ' + machine.output, m.x + m.w / 2, m.y + m.h - 12);
+  ctx.fillStyle='#b54732'; rr(m.x+22,m.y+139,(m.w-44)*S.heat,6,3); ctx.fill();
+  ctx.fillStyle = 'rgba(43,29,18,.6)'; ctx.font = '800 16px Heebo, Arial';
+
+
+  /* פאד קלט */
+  pad(machine.inPad, '#4a90d9', 'הפקד\nחומוס');
+  /* פאד פלט */
+  pad(machine.outPad, '#58b368', 'קח\nפלאפל');
+  /* ערימת פלאפל מוכנה על פאד הפלט */
+  const on = Math.min(machine.output, 10);
+  for (let i = 0; i < on; i++){
+    ctx.fillStyle = '#8b5a2b';
+    ctx.beginPath();
+    ctx.arc(machine.outPad.x - 22 + (i % 5) * 11, machine.outPad.y - 6 - Math.floor(i / 5) * 11, 6.5, 0, 7);
+    ctx.fill();
+  }
+}
+
+function pad(p, color, label){
+  ctx.setLineDash([9, 7]);
+  ctx.strokeStyle = color; ctx.lineWidth = 3.5;
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = color + '22';
+  ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+  const lines = label.split('\n');
+  ctx.fillStyle = 'rgba(43,29,18,.75)';
+  ctx.font = '800 15px Heebo, Arial'; ctx.textAlign = 'center';
+  lines.forEach((l, i) => ctx.fillText(l, p.x, p.y - 6 + i * 17 + p.r * 0 + (lines.length === 1 ? 5 : 0)));
+}
+
+function drawStall(){
+  const st = stall;
+  /* דלפק */
+  ctx.fillStyle = '#8b5e34'; rr(st.x, st.y, st.w, st.h, 12); ctx.fill();
+  ctx.fillStyle = '#a06b3c'; rr(st.x + 8, st.y + 8, st.w - 16, st.h - 26, 8); ctx.fill();
+  /* סוכך */
+  for (let i = 0; i < 8; i++){
+    ctx.fillStyle = i % 2 ? '#fff5e6' : '#d9483b';
+    rr(st.x - 14 + i * (st.w + 28) / 8, st.y - 58, (st.w + 28) / 8, 40, 6); ctx.fill();
+  }
+  ctx.fillStyle = '#b23a2e'; rr(st.x - 18, st.y - 22, st.w + 36, 10, 5); ctx.fill();
+  ctx.fillStyle = '#fff8ea'; ctx.font = '900 23px Arial'; ctx.textAlign = 'center';
+  ctx.fillText('מנה מוכנה · ₪' + S.price, st.x + st.w / 2, st.y + 66);
+
+  /* פלאפל על הדלפק */
+  const n = Math.min(stall.stock, 12);
+  for (let i = 0; i < n; i++){
+    ctx.fillStyle = '#8b5a2b';
+    ctx.beginPath();
+    ctx.arc(st.x + 40 + (i % 6) * 26, st.y + 30 - Math.floor(i / 6) * 22, 11, 0, 7);
+    ctx.fill();
+    ctx.fillStyle = '#a06a35';
+    ctx.beginPath();
+    ctx.arc(st.x + 40 + (i % 6) * 26 - 3, st.y + 27 - Math.floor(i / 6) * 22, 4, 0, 7);
+    ctx.fill();
+  }
+  /* פיתות */
+  ctx.fillStyle = '#f0dcae';
+  ctx.beginPath(); ctx.ellipse(st.x + st.w - 70, st.y + 26, 30, 16, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#e2c98f';
+  ctx.beginPath(); ctx.ellipse(st.x + st.w - 70, st.y + 22, 30, 15, 0, 0, 7); ctx.fill();
+
+  drawServing(st.x + st.w - 70, st.y + 32, .85);
+  pad(st.dropPad, '#d9483b', 'הגש\nמנה');
+  pad(st.moneyPad, '#2f9e44', '');
+
+  /* ערימת כסף */
+  const mn = Math.min(Math.ceil(stall.moneyPile / 10), 8);
+  for (let i = 0; i < mn; i++){
+    ctx.fillStyle = i % 2 ? '#37b24d' : '#2f9e44';
+    rr(stall.moneyPad.x - 26, stall.moneyPad.y - 8 - i * 7, 52, 10, 3); ctx.fill();
+    ctx.fillStyle = '#d3f9d8';
+    ctx.font = '900 9px Arial'; ctx.textAlign = 'center';
+    ctx.fillText('₪', stall.moneyPad.x, stall.moneyPad.y - i * 7);
+  }
+  if (stall.moneyPile > 0){
+    ctx.fillStyle = '#1f6f32'; ctx.font = '800 14px Heebo, Arial';
+    ctx.fillText('₪' + stall.moneyPile, stall.moneyPad.x, stall.moneyPad.y + 34);
+  }
+}
+
+function drawUpgradePads(){
+  for (const u of upgrades){
+    const cost = u.cost(u.level);
+    const afford = S.money >= cost;
+    ctx.setLineDash([10, 8]);
+    ctx.strokeStyle = afford ? '#2f9e44' : 'rgba(90,60,30,.5)';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(u.x, u.y, u.r, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = afford ? 'rgba(47,158,68,.16)' : 'rgba(120,90,50,.10)';
+    ctx.beginPath(); ctx.arc(u.x, u.y, u.r, 0, 7); ctx.fill();
+    /* טבעת התקדמות */
+    if (u.holdT > 0){
+      ctx.strokeStyle = '#ffd94a'; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.arc(u.x, u.y, u.r + 4, -Math.PI / 2, -Math.PI / 2 + (u.holdT / .8) * Math.PI * 2); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(43,29,18,.85)';
+    ctx.font = '900 17px Heebo, Arial'; ctx.textAlign = 'center';
+    ctx.fillText(u.name, u.x, u.y - 8);
+    ctx.font = '800 15px Heebo, Arial';
+    ctx.fillStyle = afford ? '#1f6f32' : 'rgba(90,60,30,.7)';
+    ctx.fillText('₪' + cost, u.x, u.y + 14);
+    ctx.font = '600 12px Heebo, Arial';
+    ctx.fillStyle = 'rgba(43,29,18,.55)';
+    ctx.fillText('רמה ' + u.level, u.x, u.y + 32);
+    ctx.fillStyle='#68513a'; ctx.font='600 12px Arial';
+    ctx.fillText(u.key === 'cap' ? 'יותר מקום / פחות מהירות' : u.key === 'price' ? 'יותר כסף / פחות סבלנות' : 'יותר קצב / יותר חום',u.x,u.y+u.r+20);
+  }
+}
+
+function drawPerson(x, y, shirt, face, bob, hat){
+  const b = Math.sin(bob) * 3;
+  /* צל */
+  ctx.fillStyle = 'rgba(0,0,0,.18)';
+  ctx.beginPath(); ctx.ellipse(x, y + 26, 20, 8, 0, 0, 7); ctx.fill();
+  /* רגליים */
+  ctx.fillStyle = '#3a3f46';
+  rr(x - 10, y + 10 + b, 8, 16, 4); ctx.fill();
+  rr(x + 2,  y + 10 - b, 8, 16, 4); ctx.fill();
+  /* גוף */
+  ctx.fillStyle = shirt; rr(x - 15, y - 14, 30, 30, 10); ctx.fill();
+  /* ראש */
+  ctx.fillStyle = '#f2c894';
+  ctx.beginPath(); ctx.arc(x, y - 26, 13, 0, 7); ctx.fill();
+  /* שיער/כובע */
+  if (hat){
+    ctx.fillStyle = '#d9483b';
+    ctx.beginPath(); ctx.arc(x, y - 31, 13.5, Math.PI, 0); ctx.fill();
+    rr(x - 17, y - 33, 34, 6, 3); ctx.fill();
+  } else {
+    ctx.fillStyle = '#4a2f1a';
+    ctx.beginPath(); ctx.arc(x, y - 30, 12, Math.PI, 0); ctx.fill();
+  }
+  /* עיניים */
+  ctx.fillStyle = '#2b1d12';
+  ctx.beginPath(); ctx.arc(x - 4 * face, y - 27, 1.8, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 4 * face, y - 27, 1.8, 0, 7); ctx.fill();
+}
+
+function drawPlayer(){
+  drawPerson(player.x, player.y, '#3fb9a8', player.face, player.moving ? player.bob : player.bob * .3, false);
+  /* כובע טבח */
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(player.x, player.y - 38, 10, 0, 7); ctx.fill();
+  rr(player.x - 11, player.y - 38, 22, 8, 4); ctx.fill();
+  /* ערימת נשיאה מעל הראש */
+  if (player.carryN > 0){
+    const vis = Math.min(player.carryN, 8);
+    for (let i = 0; i < vis; i++){
+      ctx.fillStyle = player.carrying === 'pea' ? '#f3e5c0' : '#8b5a2b';
+      ctx.beginPath(); ctx.arc(player.x, player.y - 52 - i * 11, 7.5, 0, 7); ctx.fill();
+      if (player.carrying === 'falafel'){
+        ctx.fillStyle = '#a06a35';
+        ctx.beginPath(); ctx.arc(player.x - 2, player.y - 54 - i * 11, 3, 0, 7); ctx.fill();
+      }
+    }
+    /* MAX */
+    if (player.carryN >= S.capacity){
+      ctx.font = '900 18px Heebo, Arial'; ctx.textAlign = 'center';
+      ctx.lineWidth = 4; ctx.strokeStyle = '#fff';
+      const ty = player.y - 62 - vis * 11;
+      ctx.strokeText('מלא!', player.x, ty);
+      ctx.fillStyle = '#e03131';
+      ctx.fillText('מלא!', player.x, ty);
+    }
+  }
+}
+
+function drawCustomer(c){
+  drawPerson(c.x, c.y, c.shirt, -1, c.state === 'queue' ? c.sway * .3 : c.sway, c.hat);
+  if (c.state === 'queue'){
+    /* בועת דיבור */
+    const bw = 78, bh = 36, bx = c.x - 10, by = c.y - 88;
+    ctx.fillStyle = '#fff';
+    rr(bx - bw / 2, by - bh / 2, bw, bh, 12); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(bx - 4, by + bh / 2 - 1); ctx.lineTo(bx + 8, by + bh / 2 - 1); ctx.lineTo(bx + 2, by + bh / 2 + 10); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2b1d12'; ctx.font = '800 16px Heebo, Arial'; ctx.textAlign = 'center';
+    ctx.fillText('מנה ×' + c.want, bx, by + 6);
+    ctx.fillStyle='#e9e3d6'; rr(c.x-24,c.y-58,48,5,3); ctx.fill();
+    ctx.fillStyle=c.patience/c.maxPatience < .3 ? '#d64d3b' : '#55a86a';
+    rr(c.x-24,c.y-58,48*Math.max(0,c.patience/c.maxPatience),5,3); ctx.fill();
+  }
+}
+
+/* היעד הבא הוא סך ההכנסות שנאספו, לא הכסף הפנוי */
+function stageGoal(stage){ return Math.round(90 * (Math.pow(1.65, stage)-1) / .65 / 10)*10; }
+
+function tag(text,x,y,w,color){
+  ctx.fillStyle=color; rr(x,y,w,30,9); ctx.fill();
+  ctx.fillStyle='#fffdf3'; ctx.font='800 17px Arial'; ctx.textAlign='center';
+  ctx.fillText(text,x+w/2,y+21);
+}
+function drawZones(){
+  ctx.fillStyle='#193e34'; rr(0,0,W,112,0); ctx.fill();
+  ctx.fillStyle='#285849'; rr(24,134,326,429,23); ctx.fill();
+  ctx.fillStyle='#477252'; rr(31,141,312,415,19); ctx.fill();
+  ctx.fillStyle='#994b32'; rr(439,134,295,429,23); ctx.fill();
+  ctx.fillStyle='#c0744a'; rr(446,141,281,415,19); ctx.fill();
+  ctx.fillStyle='#f7eed8'; rr(26,610,708,171,20); ctx.fill();
+  ctx.strokeStyle='#d9bd8d'; ctx.lineWidth=2; rr(26,610,708,171,20); ctx.stroke();
+  ctx.fillStyle='#234b48'; rr(26,801,708,401,24); ctx.fill();
+  ctx.fillStyle='#39655c'; rr(33,808,694,387,20); ctx.fill();
+  tag('01 · מגדלים',43,149,163,'#193e34');
+  tag('02 · מטגנים',475,149,163,'#713a2b');
+  tag('03 · מגישים',43,815,163,'#193e34');
+  ctx.fillStyle='#53452f';ctx.font='800 18px Arial';ctx.textAlign='center';
+  ctx.fillText('חומוס גולמי',130,590); ctx.fillText('כדור טרי',380,590); ctx.fillText('מנה מוכנה',632,590);
+  ctx.strokeStyle='#a7754d';ctx.lineWidth=4;
+  for(const x of [240,490]){ ctx.beginPath();ctx.moveTo(x+12,584);ctx.lineTo(x-10,584);ctx.moveTo(x-10,584);ctx.lineTo(x,577);ctx.moveTo(x-10,584);ctx.lineTo(x,591);ctx.stroke(); }
+  ctx.fillStyle='#5a9d54';ctx.beginPath();ctx.ellipse(130,551,22,13,0,0,7);ctx.fill();
+  ctx.fillStyle='#f4db96';for(const dx of [-9,2,13]){ctx.beginPath();ctx.arc(130+dx,549,6,0,7);ctx.fill();}
+  ctx.fillStyle='#9a592c';ctx.beginPath();ctx.arc(380,550,19,0,7);ctx.fill();
+  ctx.fillStyle='#d99b48';ctx.beginPath();ctx.arc(374,545,6,0,7);ctx.fill();
+  drawServing(632,552,.9);
+  ctx.fillStyle='#66513a';ctx.font='800 16px Arial'; ctx.fillText('שדרוגי העסק · עמוד על העיגול כדי לקנות',380,637);
+}
+function drawServing(x,y,z){
+  ctx.save();ctx.translate(x,y);ctx.scale(z,z);
+  ctx.fillStyle='#ecce92';ctx.beginPath();ctx.ellipse(0,7,34,21,0,0,7);ctx.fill();
+  ctx.fillStyle='#8a5030';for(const a of [-17,0,17]){ctx.beginPath();ctx.arc(a,0,9,0,7);ctx.fill();}
+  ctx.fillStyle='#5ba958';for(const a of [-22,7,22]){ctx.beginPath();ctx.ellipse(a,-10,10,5,.3,0,7);ctx.fill();}
+  ctx.strokeStyle='#f8f4d9';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(-25,1);ctx.bezierCurveTo(-5,-13,5,17,26,-1);ctx.stroke();
+  ctx.fillStyle='#d14934';ctx.beginPath();ctx.arc(0,-7,4,0,7);ctx.fill();ctx.restore();
+}
+function drawDashboard(){
+  ctx.textAlign='right';ctx.fillStyle='#fff4d3';ctx.font='900 34px Arial';ctx.fillText('מלך הפלאפל',733,41);
+  ctx.font='700 17px Arial';ctx.fillStyle='#bde8c7';ctx.fillText('מהשדה ועד הפיתה',733,69);
+  tag('שלב '+S.stage,25,19,104,'#d89539');
+  ctx.fillStyle='#fff';ctx.font='800 20px Arial';ctx.textAlign='left';ctx.fillText('₪'+S.money,145,41);
+  ctx.font='700 15px Arial';ctx.fillText('נשיאה '+player.carryN+'/'+S.capacity+'  ·  בדוכן '+stall.stock,25,78);
+  ctx.fillStyle='#406655';rr(25,91,710,9,4);ctx.fill();
+  const previous=S.stage===1?0:stageGoal(S.stage-1), next=stageGoal(S.stage);
+  ctx.fillStyle='#edbb62';rr(25,91,710*clamp((S.earned-previous)/(next-previous),0,1),9,4);ctx.fill();
+  ctx.textAlign='center';ctx.fillStyle='#fffdf3';ctx.font='800 16px Arial';
+  ctx.fillText('יעד הכנסות: ₪'+S.earned+' / ₪'+next,385,79);
+  if(S.bonus>0){tag('בונוס כפול · '+Math.ceil(S.bonus)+' שנ׳',243,119,275,'#d89539');}
+  if(S.noticeT>0){ctx.fillStyle='#193e34';rr(155,471,450,52,15);ctx.fill();ctx.fillStyle='#fff4d3';ctx.font='900 20px Arial';ctx.fillText(S.notice,380,504);}
+  ctx.fillStyle='#fff4d3';ctx.font='700 16px Arial';ctx.fillText('לקוחות שהלכו: '+S.missed+'   ·   הזז את הדמות בעזרת גרירה או חצים',380,1176);
+}
+/* שמירה מקומית אופציונלית; המשחק ממשיך גם כשהאחסון חסום */
+const SAVE_KEY = 'falafel-king-progress-v2';
+try {
+  const old = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+  if (old && old.version === 2 && Number.isFinite(old.earned) && old.earned >= 0){
+    S.money = clamp(old.money || 0, 0, 1e9);
+    S.earned = clamp(old.earned, 0, 1e9);
+    S.stage = clamp(Math.floor(old.stage || 1), 1, 20);
+    S.served = clamp(old.served || 0, 0, 1e9);
+    S.missed = clamp(old.missed || 0, 0, 1e9);
+    if (Array.isArray(old.levels)) upgrades.forEach((u,i) => {
+      const n = clamp(Math.floor(old.levels[i] || 0),0,20);
+      for(let j=0;j<n;j++) u.apply();
+      u.level=n;
+    });
+  }
+} catch(e) { /* ללא אחסון, משחקים כרגיל */ }
+setInterval(() => {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify({
+    version:2, money:S.money, earned:S.earned, stage:S.stage, served:S.served,
+    missed:S.missed, levels:upgrades.map(u=>u.level)
+  })); } catch(e) { /* אחסון חסום או מלא */ }
+}, 5000);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
