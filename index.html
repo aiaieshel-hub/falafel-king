@@ -364,13 +364,6 @@ function draw(){
   ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
 
-  /* רקע חולי */
-  ctx.fillStyle = '#f1dfbc'; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = 'rgba(255,255,255,.06)';
-  for (let i = 0; i < 26; i++){
-    const px = (i * 173) % W, py = (i * 389) % H;
-    ctx.beginPath(); ctx.arc(px, py, 14 + (i % 4) * 6, 0, 7); ctx.fill();
-  }
   drawZones();
 
   drawField();
@@ -416,149 +409,18 @@ function draw(){
   }
 }
 
-function drawField(){
-  /* גדר */
-  ctx.fillStyle = '#8b5e34';
-  for (let x = field.x - 8; x < field.x + field.w + 8; x += 34){
-    rr(x, field.y - 16, 8, 22, 3); ctx.fill();
-  }
-  ctx.fillStyle = '#a06b3c';
-  rr(field.x - 12, field.y - 12, field.w + 24, 8, 4); ctx.fill();
-
-  /* אדמה */
-  ctx.fillStyle = '#a9794b';
-  rr(field.x, field.y, field.w, field.h, 18); ctx.fill();
-  ctx.fillStyle = '#96693c';
-  for (let i = 0; i < 4; i++){ rr(field.x + 16, field.y + 30 + i * 82, field.w - 32, 26, 12); ctx.fill(); }
-
-  /* שיחי חומוס */
-  const n = field.peas;
-  for (let i = 0; i < n; i++){
-    const bx = field.x + 30 + (i % 5) * 50, by = field.y + 40 + Math.floor(i / 5) * 44;
-    ctx.fillStyle = '#5e9c48';
-    ctx.beginPath(); ctx.ellipse(bx, by, 17, 12, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = '#f3e5c0';
-    ctx.beginPath(); ctx.arc(bx - 5, by - 4, 5.5, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.arc(bx + 6, by - 2, 5.5, 0, 7); ctx.fill();
-  }
-  if (n === 0){
-    ctx.fillStyle = 'rgba(255,255,255,.55)';
-    ctx.font = '700 17px Heebo, Arial'; ctx.textAlign = 'center';
-    ctx.fillText('החומוס צומח...', field.x + field.w / 2, field.y + field.h / 2);
-  }
-  ctx.fillStyle = 'rgba(43,29,18,.6)';
-  ctx.font = '800 16px Heebo, Arial'; ctx.textAlign = 'center';
-
-}
-
-function drawMachine(){
-  const m = machine;
-  /* גוף המכונה */
-  ctx.fillStyle = '#57616e'; rr(m.x, m.y, m.w, m.h, 14); ctx.fill();
-  ctx.fillStyle = '#6b7b8c'; rr(m.x + 8, m.y + 8, m.w - 16, m.h - 40, 10); ctx.fill();
-  /* מחבת שמן */
-  ctx.fillStyle = '#3a3f46'; rr(m.x + 22, m.y + 22, m.w - 44, 74, 10); ctx.fill();
-  ctx.fillStyle = '#e2a13c'; rr(m.x + 30, m.y + 30, m.w - 60, 58, 8); ctx.fill();
-  /* בועות שמן */
-  ctx.fillStyle = 'rgba(255,235,170,.7)';
-  for (let i = 0; i < 5; i++){
-    const bx = m.x + 48 + i * 34, by = m.y + 56 + Math.sin(S.t * 3 + i * 2) * 12;
-    ctx.beginPath(); ctx.arc(bx, by, 4, 0, 7); ctx.fill();
-  }
-  /* כדורים מטוגנים במחבת */
-  const fry = Math.min(machine.input + (machine.prog > 0 ? 1 : 0), 6);
-  ctx.fillStyle = '#8b5a2b';
-  for (let i = 0; i < fry; i++){
-    ctx.beginPath(); ctx.arc(m.x + 55 + i * 32, m.y + 60, 9, 0, 7); ctx.fill();
-  }
-  /* פס התקדמות */
-  ctx.fillStyle = '#2e343b'; rr(m.x + 22, m.y + 112, m.w - 44, 16, 8); ctx.fill();
-  ctx.fillStyle = '#ffb347';
-  const pw = (m.w - 48) * (machine.input > 0 ? machine.prog / S.processTime : 0);
-  if (pw > 2){ rr(m.x + 24, m.y + 114, pw, 12, 6); ctx.fill(); }
-  /* מונה פלט */
-  ctx.fillStyle = '#fff'; ctx.font = '800 15px Heebo, Arial'; ctx.textAlign = 'center';
-  ctx.fillText(S.cooldown > 0 ? 'קירור ' + Math.ceil(S.cooldown) + ' שניות' : 'בתור: ' + machine.input + ' · מוכן: ' + machine.output, m.x + m.w / 2, m.y + m.h - 12);
-  ctx.fillStyle='#b54732'; rr(m.x+22,m.y+139,(m.w-44)*S.heat,6,3); ctx.fill();
-  ctx.fillStyle = 'rgba(43,29,18,.6)'; ctx.font = '800 16px Heebo, Arial';
-
-
-  /* פאד קלט */
-  pad(machine.inPad, '#4a90d9', 'הפקד\nחומוס');
-  /* פאד פלט */
-  pad(machine.outPad, '#58b368', 'קח\nפלאפל');
-  /* ערימת פלאפל מוכנה על פאד הפלט */
-  const on = Math.min(machine.output, 10);
-  for (let i = 0; i < on; i++){
-    ctx.fillStyle = '#8b5a2b';
-    ctx.beginPath();
-    ctx.arc(machine.outPad.x - 22 + (i % 5) * 11, machine.outPad.y - 6 - Math.floor(i / 5) * 11, 6.5, 0, 7);
-    ctx.fill();
-  }
-}
-
 function pad(p, color, label){
+  ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = 14;
   ctx.setLineDash([9, 7]);
   ctx.strokeStyle = color; ctx.lineWidth = 3.5;
   ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.restore(); ctx.setLineDash([]);
   ctx.fillStyle = color + '22';
   ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
-  const lines = label.split('\n');
-  ctx.fillStyle = 'rgba(43,29,18,.75)';
-  ctx.font = '800 15px Heebo, Arial'; ctx.textAlign = 'center';
-  lines.forEach((l, i) => ctx.fillText(l, p.x, p.y - 6 + i * 17 + p.r * 0 + (lines.length === 1 ? 5 : 0)));
-}
-
-function drawStall(){
-  const st = stall;
-  /* דלפק */
-  ctx.fillStyle = '#8b5e34'; rr(st.x, st.y, st.w, st.h, 12); ctx.fill();
-  ctx.fillStyle = '#a06b3c'; rr(st.x + 8, st.y + 8, st.w - 16, st.h - 26, 8); ctx.fill();
-  /* סוכך */
-  for (let i = 0; i < 8; i++){
-    ctx.fillStyle = i % 2 ? '#fff5e6' : '#d9483b';
-    rr(st.x - 14 + i * (st.w + 28) / 8, st.y - 58, (st.w + 28) / 8, 40, 6); ctx.fill();
-  }
-  ctx.fillStyle = '#b23a2e'; rr(st.x - 18, st.y - 22, st.w + 36, 10, 5); ctx.fill();
-  ctx.fillStyle = '#fff8ea'; ctx.font = '900 23px Arial'; ctx.textAlign = 'center';
-  ctx.fillText('מנה מוכנה · ₪' + S.price, st.x + st.w / 2, st.y + 66);
-
-  /* פלאפל על הדלפק */
-  const n = Math.min(stall.stock, 12);
-  for (let i = 0; i < n; i++){
-    ctx.fillStyle = '#8b5a2b';
-    ctx.beginPath();
-    ctx.arc(st.x + 40 + (i % 6) * 26, st.y + 30 - Math.floor(i / 6) * 22, 11, 0, 7);
-    ctx.fill();
-    ctx.fillStyle = '#a06a35';
-    ctx.beginPath();
-    ctx.arc(st.x + 40 + (i % 6) * 26 - 3, st.y + 27 - Math.floor(i / 6) * 22, 4, 0, 7);
-    ctx.fill();
-  }
-  /* פיתות */
-  ctx.fillStyle = '#f0dcae';
-  ctx.beginPath(); ctx.ellipse(st.x + st.w - 70, st.y + 26, 30, 16, 0, 0, 7); ctx.fill();
-  ctx.fillStyle = '#e2c98f';
-  ctx.beginPath(); ctx.ellipse(st.x + st.w - 70, st.y + 22, 30, 15, 0, 0, 7); ctx.fill();
-
-  drawServing(st.x + st.w - 70, st.y + 32, .85);
-  pad(st.dropPad, '#d9483b', 'הגש\nמנה');
-  pad(st.moneyPad, '#2f9e44', '');
-
-  /* ערימת כסף */
-  const mn = Math.min(Math.ceil(stall.moneyPile / 10), 8);
-  for (let i = 0; i < mn; i++){
-    ctx.fillStyle = i % 2 ? '#37b24d' : '#2f9e44';
-    rr(stall.moneyPad.x - 26, stall.moneyPad.y - 8 - i * 7, 52, 10, 3); ctx.fill();
-    ctx.fillStyle = '#d3f9d8';
-    ctx.font = '900 9px Arial'; ctx.textAlign = 'center';
-    ctx.fillText('₪', stall.moneyPad.x, stall.moneyPad.y - i * 7);
-  }
-  if (stall.moneyPile > 0){
-    ctx.fillStyle = '#1f6f32'; ctx.font = '800 14px Heebo, Arial';
-    ctx.fillText('₪' + stall.moneyPile, stall.moneyPad.x, stall.moneyPad.y + 34);
-  }
+  const k = label.indexOf('icon:') === 0 ? label.slice(5) : '';
+  if (k === 'pea'){ icPea(p.x, p.y - 6, 1); icArrow(p.x, p.y + 28, .9, 1, color); }
+  if (k === 'ball'){ icBall(p.x, p.y - 4, 1.1); icArrow(p.x, p.y + 28, .9, -1, color); }
+  if (k === 'pita'){ icPita(p.x, p.y - 6, 1); icArrow(p.x, p.y + 28, .9, 1, color); }
 }
 
 function drawUpgradePads(){
@@ -577,17 +439,13 @@ function drawUpgradePads(){
       ctx.strokeStyle = '#ffd94a'; ctx.lineWidth = 7;
       ctx.beginPath(); ctx.arc(u.x, u.y, u.r + 4, -Math.PI / 2, -Math.PI / 2 + (u.holdT / .8) * Math.PI * 2); ctx.stroke();
     }
-    ctx.fillStyle = 'rgba(43,29,18,.85)';
-    ctx.font = '900 17px Heebo, Arial'; ctx.textAlign = 'center';
-    ctx.fillText(u.name, u.x, u.y - 8);
-    ctx.font = '800 15px Heebo, Arial';
-    ctx.fillStyle = afford ? '#1f6f32' : 'rgba(90,60,30,.7)';
-    ctx.fillText('₪' + cost, u.x, u.y + 14);
-    ctx.font = '600 12px Heebo, Arial';
-    ctx.fillStyle = 'rgba(43,29,18,.55)';
-    ctx.fillText('רמה ' + u.level, u.x, u.y + 32);
-    ctx.fillStyle='#68513a'; ctx.font='600 12px Arial';
-    ctx.fillText(u.key === 'cap' ? 'יותר מקום / פחות מהירות' : u.key === 'price' ? 'יותר כסף / פחות סבלנות' : 'יותר קצב / יותר חום',u.x,u.y+u.r+20);
+    (u.key === 'cap' ? icBag : u.key === 'price' ? icTag : icFlame)(u.x, u.y - 14, 1.2);
+    icCoin(u.x - 16, u.y + 20, .75);
+    ctx.font = '900 17px Heebo, Arial'; ctx.textAlign = 'left';
+    ctx.fillStyle = afford ? '#1f6f32' : 'rgba(90,60,30,.75)';
+    ctx.fillText(cost, u.x - 4, u.y + 26);
+    ctx.textAlign = 'center';
+    pips(u.x - (Math.min(u.level, 5) - 1) * 6.5, u.y + 42, u.level, '#d99b48', 5);
   }
 }
 
@@ -673,30 +531,288 @@ function tag(text,x,y,w,color){
   ctx.fillStyle='#fffdf3'; ctx.font='800 17px Arial'; ctx.textAlign='center';
   ctx.fillText(text,x+w/2,y+21);
 }
-function drawZones(){
-  ctx.fillStyle='#193e34'; rr(0,0,W,112,0); ctx.fill();
-  ctx.fillStyle='#285849'; rr(24,134,326,429,23); ctx.fill();
-  ctx.fillStyle='#477252'; rr(31,141,312,415,19); ctx.fill();
-  ctx.fillStyle='#994b32'; rr(439,134,295,429,23); ctx.fill();
-  ctx.fillStyle='#c0744a'; rr(446,141,281,415,19); ctx.fill();
-  ctx.fillStyle='#f7eed8'; rr(26,610,708,171,20); ctx.fill();
-  ctx.strokeStyle='#d9bd8d'; ctx.lineWidth=2; rr(26,610,708,171,20); ctx.stroke();
-  ctx.fillStyle='#234b48'; rr(26,801,708,401,24); ctx.fill();
-  ctx.fillStyle='#39655c'; rr(33,808,694,387,20); ctx.fill();
-  tag('01 · מגדלים',43,149,163,'#193e34');
-  tag('02 · מטגנים',475,149,163,'#713a2b');
-  tag('03 · מגישים',43,815,163,'#193e34');
-  ctx.fillStyle='#53452f';ctx.font='800 18px Arial';ctx.textAlign='center';
-  ctx.fillText('חומוס גולמי',130,590); ctx.fillText('כדור טרי',380,590); ctx.fillText('מנה מוכנה',632,590);
-  ctx.strokeStyle='#a7754d';ctx.lineWidth=4;
-  for(const x of [240,490]){ ctx.beginPath();ctx.moveTo(x+12,584);ctx.lineTo(x-10,584);ctx.moveTo(x-10,584);ctx.lineTo(x,577);ctx.moveTo(x-10,584);ctx.lineTo(x,591);ctx.stroke(); }
-  ctx.fillStyle='#5a9d54';ctx.beginPath();ctx.ellipse(130,551,22,13,0,0,7);ctx.fill();
-  ctx.fillStyle='#f4db96';for(const dx of [-9,2,13]){ctx.beginPath();ctx.arc(130+dx,549,6,0,7);ctx.fill();}
-  ctx.fillStyle='#9a592c';ctx.beginPath();ctx.arc(380,550,19,0,7);ctx.fill();
-  ctx.fillStyle='#d99b48';ctx.beginPath();ctx.arc(374,545,6,0,7);ctx.fill();
-  drawServing(632,552,.9);
-  ctx.fillStyle='#66513a';ctx.font='800 16px Arial'; ctx.fillText('שדרוגי העסק · עמוד על העיגול כדי לקנות',380,637);
+/* ---------------- סגנון איזומטרי: פלטה ועזרים ---------------- */
+const PAL = { sand:'#f3dfa8', sandEdge:'#d3b274', terra:'#c9794b', terraDk:'#8f4e30', cream:'#f7eed8',
+  gold:'#d99b48', coin:'#f5c542', wood:'#b57a45', woodDk:'#76492a', teal:'#193e34', tealMid:'#234b48' };
+function srnd(i){ const s = Math.sin(i * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); }
+function lgrad(y0, y1, c0, c1){ const g = ctx.createLinearGradient(0, y0, 0, y1); g.addColorStop(0, c0); g.addColorStop(1, c1); return g; }
+/* בלוק מוגבה: צל רך, דופן כהה, פאה עליונה */
+function ext(x, y, w, h, r, d, top, side){
+  ctx.fillStyle = 'rgba(25,55,30,.24)'; rr(x + 5, y + d + 8, w, h, r); ctx.fill();
+  ctx.fillStyle = side; rr(x, y + d, w, h, r); ctx.fill();
+  ctx.fillStyle = top; rr(x, y, w, h, r); ctx.fill();
 }
+function shadowEl(x, y, rx, ry){ ctx.fillStyle = 'rgba(25,55,30,.22)'; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); ctx.fill(); }
+function bushTree(x, y, s){
+  shadowEl(x + 6 * s, y + 4 * s, 34 * s, 12 * s);
+  ctx.fillStyle = '#7a4f2c'; rr(x - 5 * s, y - 24 * s, 10 * s, 28 * s, 3); ctx.fill();
+  const blobs = [[0,-52,26],[-20,-38,20],[20,-38,20],[0,-34,22]];
+  const cols = ['#3f8f48','#4aa150','#4aa150','#58b45a'];
+  blobs.forEach((b, i) => { ctx.fillStyle = cols[i]; ctx.beginPath(); ctx.arc(x + b[0] * s, y + b[1] * s, b[2] * s, 0, 7); ctx.fill(); });
+  ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.beginPath(); ctx.arc(x - 8 * s, y - 60 * s, 10 * s, 0, 7); ctx.fill();
+}
+function rockEl(x, y, s){
+  shadowEl(x + 4 * s, y + 6 * s, 24 * s, 8 * s);
+  ctx.fillStyle = '#8c95a0'; ctx.beginPath(); ctx.moveTo(x - 22 * s, y + 4 * s); ctx.lineTo(x - 12 * s, y - 16 * s); ctx.lineTo(x + 10 * s, y - 20 * s); ctx.lineTo(x + 24 * s, y + 2 * s); ctx.lineTo(x + 18 * s, y + 8 * s); ctx.lineTo(x - 16 * s, y + 8 * s); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#b4bcc6'; ctx.beginPath(); ctx.moveTo(x - 12 * s, y - 16 * s); ctx.lineTo(x + 10 * s, y - 20 * s); ctx.lineTo(x + 14 * s, y - 6 * s); ctx.lineTo(x - 14 * s, y - 4 * s); ctx.closePath(); ctx.fill();
+}
+function crateEl(x, y, w, h, filled){
+  ext(x, y, w, h, 4, 8, '#c58a52', '#7d4f2b');
+  ctx.strokeStyle = '#8d5c34'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(x + 4, y + h / 2); ctx.lineTo(x + w - 4, y + h / 2); ctx.stroke();
+  if (filled){ ctx.fillStyle = '#f0cf7a'; for (let i = 0; i < 4; i++){ ctx.beginPath(); ctx.arc(x + 8 + i * (w - 16) / 3, y + 5, 4.5, 0, 7); ctx.fill(); } }
+}
+function signBoard(text, x, y, w){
+  ctx.fillStyle = 'rgba(25,55,30,.22)'; rr(x + 3, y + 6, w, 24, 8); ctx.fill();
+  ctx.fillStyle = '#76492a'; rr(x, y + 3, w, 24, 8); ctx.fill();
+  ctx.fillStyle = '#c58a52'; rr(x, y, w, 24, 8); ctx.fill();
+  ctx.fillStyle = '#fff4d3'; ctx.font = '800 14px Heebo, Arial'; ctx.textAlign = 'center';
+  ctx.fillText(text, x + w / 2, y + 17);
+}
+
+/* ---------------- איורים במקום טקסט ---------------- */
+function icPea(x, y, s){ ctx.fillStyle = '#3f9a4b'; ctx.beginPath(); ctx.ellipse(x, y + 6 * s, 15 * s, 7 * s, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#f6dc8a'; for (const dx of [-8, 0, 8]){ ctx.beginPath(); ctx.arc(x + dx * s, y + (dx === 0 ? -3 : 0) * s, 7 * s, 0, 7); ctx.fill(); }
+  ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(x - 2 * s, y - 6 * s, 2 * s, 0, 7); ctx.fill(); }
+function icBall(x, y, s){ ctx.fillStyle = '#9a5b24'; ctx.beginPath(); ctx.arc(x, y, 12 * s, 0, 7); ctx.fill();
+  ctx.fillStyle = '#c98a45'; ctx.beginPath(); ctx.arc(x - 3 * s, y - 3 * s, 7 * s, 0, 7); ctx.fill();
+  ctx.fillStyle = '#9a5b24'; for (const [dx, dy] of [[4, 3], [-4, 5], [5, -3]]){ ctx.beginPath(); ctx.arc(x + dx * s, y + dy * s, 1.6 * s, 0, 7); ctx.fill(); } }
+function icPita(x, y, s){ ctx.fillStyle = '#e8cf97'; ctx.beginPath(); ctx.ellipse(x, y + 4 * s, 18 * s, 10 * s, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#f6e3b4'; ctx.beginPath(); ctx.ellipse(x, y, 18 * s, 10 * s, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#9a5b24'; for (const dx of [-8, 0, 8]){ ctx.beginPath(); ctx.arc(x + dx * s, y - 4 * s, 5 * s, 0, 7); ctx.fill(); }
+  ctx.fillStyle = '#58b368'; ctx.beginPath(); ctx.ellipse(x - 12 * s, y - 2 * s, 5 * s, 3 * s, .5, 0, 7); ctx.fill(); }
+function icCoin(x, y, s){ ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.arc(x, y + 2 * s, 11 * s, 0, 7); ctx.fill();
+  ctx.fillStyle = '#f5c542'; ctx.beginPath(); ctx.arc(x, y, 11 * s, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#d9a000'; ctx.lineWidth = 2 * s; ctx.beginPath(); ctx.arc(x, y, 7 * s, 0, 7); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(x - 4 * s, y - 4 * s, 2.2 * s, 0, 7); ctx.fill(); }
+function icCrown(x, y, s){ ctx.fillStyle = '#f5c542'; ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 2 * s; ctx.beginPath();
+  ctx.moveTo(x - 14 * s, y + 8 * s); ctx.lineTo(x - 16 * s, y - 8 * s); ctx.lineTo(x - 7 * s, y - 1 * s); ctx.lineTo(x, y - 12 * s); ctx.lineTo(x + 7 * s, y - 1 * s); ctx.lineTo(x + 16 * s, y - 8 * s); ctx.lineTo(x + 14 * s, y + 8 * s); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#d9483b'; ctx.beginPath(); ctx.arc(x, y + 2 * s, 3 * s, 0, 7); ctx.fill(); }
+function icFlame(x, y, s){ ctx.fillStyle = '#ff7a1a'; ctx.beginPath(); ctx.moveTo(x, y - 14 * s); ctx.quadraticCurveTo(x + 14 * s, y, x + 8 * s, y + 10 * s); ctx.quadraticCurveTo(x, y + 16 * s, x - 8 * s, y + 10 * s); ctx.quadraticCurveTo(x - 14 * s, y, x, y - 14 * s); ctx.fill();
+  ctx.fillStyle = '#ffd04a'; ctx.beginPath(); ctx.moveTo(x, y - 2 * s); ctx.quadraticCurveTo(x + 7 * s, y + 5 * s, x + 3 * s, y + 10 * s); ctx.quadraticCurveTo(x - 6 * s, y + 10 * s, x - 5 * s, y + 4 * s); ctx.fill(); }
+function icBag(x, y, s){ ctx.fillStyle = '#c0744a'; rr(x - 13 * s, y - 8 * s, 26 * s, 24 * s, 8 * s); ctx.fill();
+  ctx.fillStyle = '#8f4e30'; rr(x - 8 * s, y + 4 * s, 16 * s, 9 * s, 4 * s); ctx.fill();
+  ctx.strokeStyle = '#8f4e30'; ctx.lineWidth = 3 * s; ctx.beginPath(); ctx.arc(x, y - 8 * s, 7 * s, Math.PI, 0); ctx.stroke(); }
+function icTag(x, y, s){ ctx.fillStyle = '#2f9e44'; ctx.beginPath(); ctx.moveTo(x - 14 * s, y - 2 * s); ctx.lineTo(x - 4 * s, y - 12 * s); ctx.lineTo(x + 14 * s, y - 12 * s); ctx.lineTo(x + 14 * s, y + 12 * s); ctx.lineTo(x - 4 * s, y + 12 * s); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x - 3 * s, y, 2.6 * s, 0, 7); ctx.fill(); icCoin(x + 6 * s, y, .55 * s); }
+function icArrow(x, y, s, dir, col){ ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, y + 8 * s * dir); ctx.lineTo(x - 9 * s, y - 2 * s * dir); ctx.lineTo(x - 3.5 * s, y - 2 * s * dir); ctx.lineTo(x - 3.5 * s, y - 8 * s * dir); ctx.lineTo(x + 3.5 * s, y - 8 * s * dir); ctx.lineTo(x + 3.5 * s, y - 2 * s * dir); ctx.lineTo(x + 9 * s, y - 2 * s * dir); ctx.closePath(); ctx.fill(); }
+function icSnow(x, y, s){ ctx.strokeStyle = '#8fd8ff'; ctx.lineWidth = 3 * s; ctx.lineCap = 'round'; for (let i = 0; i < 3; i++){ const a = i * Math.PI / 3; ctx.beginPath(); ctx.moveTo(x - Math.cos(a) * 11 * s, y - Math.sin(a) * 11 * s); ctx.lineTo(x + Math.cos(a) * 11 * s, y + Math.sin(a) * 11 * s); ctx.stroke(); } ctx.lineCap = 'butt'; }
+function pips(x, y, n, col, max){ for (let i = 0; i < Math.min(n, max); i++){ ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x + i * 13, y, 4.5, 0, 7); ctx.fill(); } }
+function signIcon(x, y, w, fn){ ctx.fillStyle = 'rgba(25,55,30,.22)'; rr(x + 3, y + 6, w, 30, 9); ctx.fill();
+  ctx.fillStyle = '#76492a'; rr(x, y + 3, w, 30, 9); ctx.fill(); ctx.fillStyle = '#c58a52'; rr(x, y, w, 30, 9); ctx.fill(); fn(x + w / 2, y + 15, .8); }
+
+/* ---------------- רקע: אי איזומטרי ---------------- */
+function drawZones(){
+  /* דשא */
+  ctx.fillStyle = lgrad(0, H, '#92d466', '#5ea956'); ctx.fillRect(0, 0, W, H);
+  /* רשת איזומטרית עדינה */
+  ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 2;
+  for (let k = -H; k < W + H; k += 76){
+    ctx.beginPath(); ctx.moveTo(k, 0); ctx.lineTo(k + H * 2, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(k + H * 2, 0); ctx.lineTo(k, H); ctx.stroke();
+  }
+  for (let i = 0; i < 18; i++){ ctx.fillStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); ctx.ellipse(srnd(i) * W, 130 + srnd(i + 40) * 440, 40 + srnd(i + 9) * 40, 16 + srnd(i + 3) * 14, 0, 0, 7); ctx.fill(); }
+
+  /* שביל חול ופלאזה */
+  ext(10, 586, 740, 640, 48, 14, PAL.sand, PAL.sandEdge);
+  ctx.fillStyle = 'rgba(190,150,80,.13)';
+  for (let k = -H; k < W + H; k += 64){
+    ctx.save(); rr(10, 586, 740, 640, 48); ctx.clip();
+    ctx.strokeStyle = 'rgba(190,150,80,.16)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(k, 586); ctx.lineTo(k + 640 * 2, 1226); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(k + 640 * 2, 586); ctx.lineTo(k, 1226); ctx.stroke();
+    ctx.restore();
+  }
+  /* אבני שביל */
+  for (let i = 0; i < 30; i++){ ctx.fillStyle = 'rgba(200,160,90,.35)'; ctx.beginPath(); ctx.ellipse(40 + srnd(i + 70) * 680, 600 + srnd(i + 90) * 600, 5 + srnd(i) * 4, 3, 0, 0, 7); ctx.fill(); }
+
+  /* מדשאה של השדה */
+  ext(24, 134, 326, 429, 26, 12, '#86c85d', '#4f8f46');
+  /* רצפת מטגנים */
+  ext(439, 134, 295, 429, 26, 12, '#e0a77b', '#a8683f');
+  ctx.save(); rr(439, 134, 295, 429, 26); ctx.clip();
+  ctx.strokeStyle = 'rgba(143,78,48,.22)'; ctx.lineWidth = 2;
+  for (let y = 134; y < 563; y += 30){ ctx.beginPath(); ctx.moveTo(439, y); ctx.lineTo(734, y); ctx.stroke();
+    for (let x = 439 + ((y / 30) % 2) * 30; x < 734; x += 60){ ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 30); ctx.stroke(); } }
+  ctx.restore();
+
+  /* פלאזת הדוכן */
+  ctx.fillStyle = 'rgba(255,248,226,.55)'; rr(36, 812, 688, 372, 40); ctx.fill();
+  ctx.strokeStyle = 'rgba(190,150,80,.4)'; ctx.lineWidth = 3; rr(36, 812, 688, 372, 40); ctx.stroke();
+
+  /* מים בפינה */
+  ctx.save();
+  ctx.beginPath(); ctx.moveTo(0, 1090); ctx.bezierCurveTo(90, 1085, 150, 1135, 168, 1180); ctx.bezierCurveTo(176, 1205, 190, 1225, 215, 1240); ctx.lineTo(0, 1240); ctx.closePath();
+  ctx.fillStyle = '#9fe3ee'; ctx.fill(); ctx.clip();
+  ctx.fillStyle = lgrad(1090, 1240, '#58cbe0', '#2d94c4'); ctx.fillRect(0, 1100, 240, 150);
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 3;
+  for (let i = 0; i < 5; i++){ const wy = 1140 + i * 24 + Math.sin(S.t * 1.5 + i) * 3; ctx.beginPath(); ctx.moveTo(20 + i * 8, wy); ctx.quadraticCurveTo(50 + i * 8, wy - 6, 80 + i * 8, wy); ctx.stroke(); }
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, 1090); ctx.bezierCurveTo(90, 1085, 150, 1135, 168, 1180); ctx.bezierCurveTo(176, 1205, 190, 1225, 215, 1240); ctx.stroke(); ctx.lineCap = 'butt';
+  rockEl(120, 1118, .8); rockEl(168, 1196, .9); rockEl(30, 1080, .7);
+
+  /* כותרת עליונה */
+  ctx.fillStyle = 'rgba(25,55,30,.28)'; ctx.fillRect(0, 112, W, 10);
+  ctx.fillStyle = lgrad(0, 112, '#1f4a40', '#163a31'); ctx.fillRect(0, 0, W, 112);
+  ctx.fillStyle = '#e7c37b'; ctx.fillRect(0, 109, W, 4);
+
+  /* קישוט: עצים, סלעים, שיחים בין האזורים */
+  bushTree(392, 262, 1); bushTree(372, 470, .85); bushTree(418, 540, .7);
+  rockEl(392, 168, .8);
+  bushTree(744, 640, .8); bushTree(22, 660, .8); bushTree(742, 800, .75);
+  bushTree(30, 790, .7); bushTree(742, 1170, .85);
+  rockEl(728, 1100, .8);
+  /* קציר: שלט שדה */
+    signIcon(445, 146, 70, icFlame);
+  signIcon(40, 822, 70, icPita);
+
+  /* תוויות עמדות על השביל */
+  ctx.fillStyle = '#7a5a34'; ctx.font = '800 18px Heebo, Arial'; ctx.textAlign = 'center';
+  
+  ctx.strokeStyle = '#b8895a'; ctx.lineWidth = 4;
+  for (const x of [240, 490]){ ctx.beginPath(); ctx.moveTo(x + 12, 584); ctx.lineTo(x - 10, 584); ctx.moveTo(x - 10, 584); ctx.lineTo(x, 577); ctx.moveTo(x - 10, 584); ctx.lineTo(x, 591); ctx.stroke(); }
+  ctx.fillStyle = '#5a9d54'; ctx.beginPath(); ctx.ellipse(130, 551, 22, 13, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#f4db96'; for (const dx of [-9, 2, 13]){ ctx.beginPath(); ctx.arc(130 + dx, 549, 6, 0, 7); ctx.fill(); }
+  ctx.fillStyle = '#9a592c'; ctx.beginPath(); ctx.arc(380, 550, 19, 0, 7); ctx.fill();
+  ctx.fillStyle = '#d99b48'; ctx.beginPath(); ctx.arc(374, 545, 6, 0, 7); ctx.fill();
+  drawServing(632, 552, .9);
+  for (const dx of [-30, 0, 30]) icArrow(380 + dx, 637, .8, -1, 'rgba(120,90,50,.55)');
+}
+
+/* ---------------- שדה חומוס ---------------- */
+function drawField(){
+  /* גדר מאחור */
+  ctx.fillStyle = '#76492a';
+  for (let x = field.x - 8; x < field.x + field.w + 8; x += 34){ rr(x, field.y - 22, 8, 26, 3); ctx.fill(); }
+  ctx.fillStyle = '#b57a45'; rr(field.x - 12, field.y - 14, field.w + 24, 8, 4); ctx.fill();
+  /* אדמה מוגבהת */
+  ext(field.x, field.y, field.w, field.h, 20, 16, '#b8834f', '#7a4f2d');
+  ctx.fillStyle = '#9b6a3b';
+  for (let i = 0; i < 8; i++){ rr(field.x + 14, field.y + 22 + i * 44, field.w - 28, 14, 7); ctx.fill(); }
+  /* שיחי חומוס */
+  const n = field.peas;
+  for (let i = 0; i < n; i++){
+    const bx = field.x + 30 + (i % 5) * 50, by = field.y + 40 + Math.floor(i / 5) * 44;
+    shadowEl(bx + 4, by + 12, 18, 6);
+    ctx.fillStyle = '#3f9a4b'; ctx.beginPath(); ctx.ellipse(bx - 9, by + 2, 11, 8, -.5, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(bx + 9, by + 2, 11, 8, .5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#62bb5a'; ctx.beginPath(); ctx.ellipse(bx, by - 3, 14, 11, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#f6dc8a';
+    ctx.beginPath(); ctx.arc(bx - 5, by - 6, 5.5, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.arc(bx + 6, by - 4, 5.5, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.arc(bx - 6.5, by - 8, 1.8, 0, 7); ctx.fill();
+  }
+  if (n === 0){ icSnow(field.x + field.w / 2, field.y + field.h / 2, 0); ctx.globalAlpha = .6; icPea(field.x + field.w / 2, field.y + field.h / 2, 1.6); ctx.globalAlpha = 1; }
+  crateEl(field.x + field.w - 78, field.y + field.h + 12, 54, 30, true);
+  crateEl(field.x + 10, field.y + field.h + 14, 44, 28, true);
+}
+
+/* ---------------- תחנת טיגון ---------------- */
+function drawMachine(){
+  const m = machine;
+  /* ארובה + אדים */
+  ext(m.x + m.w - 60, m.y - 18, 36, 70, 6, 8, '#c06a42', '#85472c');
+  for (let i = 0; i < 4; i++){
+    const ph = ((S.t * .5 + i * .25) % 1);
+    ctx.globalAlpha = (1 - ph) * .7; ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(m.x + m.w - 42 + Math.sin(S.t * 2 + i) * 6 + ph * 10, m.y - 14 - ph * 34, 9 + ph * 12, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  /* גוף לבנים */
+  ext(m.x, m.y + 36, m.w, m.h - 36, 18, 14, PAL.terra, PAL.terraDk);
+  ctx.save(); rr(m.x, m.y + 36, m.w, m.h - 36, 18); ctx.clip();
+  ctx.strokeStyle = 'rgba(110,55,30,.28)'; ctx.lineWidth = 2;
+  for (let y = m.y + 36; y < m.y + m.h; y += 18){ ctx.beginPath(); ctx.moveTo(m.x, y); ctx.lineTo(m.x + m.w, y); ctx.stroke();
+    for (let x = m.x + ((y / 18) % 2) * 22; x < m.x + m.w; x += 44){ ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 18); ctx.stroke(); } }
+  ctx.restore();
+  /* מחבת שמן אליפטית */
+  const cx = m.x + m.w / 2, cy = m.y + 70;
+  shadowEl(cx + 4, cy + 20, 104, 36);
+  ctx.fillStyle = '#2f343b'; ctx.beginPath(); ctx.ellipse(cx, cy + 6, 104, 40, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#4b525c'; ctx.beginPath(); ctx.ellipse(cx, cy, 104, 40, 0, 0, 7); ctx.fill();
+  const og = ctx.createRadialGradient(cx - 20, cy - 10, 6, cx, cy, 90); og.addColorStop(0, '#ffd067'); og.addColorStop(1, '#e8962c');
+  ctx.fillStyle = og; ctx.beginPath(); ctx.ellipse(cx, cy, 92, 33, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(255,245,200,.8)';
+  for (let i = 0; i < 6; i++){ const bx = cx - 60 + i * 24, by = cy + Math.sin(S.t * 3 + i * 2) * 10; ctx.beginPath(); ctx.arc(bx, by, 3.5, 0, 7); ctx.fill(); }
+  const fry = Math.min(machine.input + (machine.prog > 0 ? 1 : 0), 6);
+  for (let i = 0; i < fry; i++){
+    const bx = cx - 62 + i * 25, by = cy + (i % 2 ? 6 : -6);
+    ctx.fillStyle = '#9a5b24'; ctx.beginPath(); ctx.arc(bx, by, 10, 0, 7); ctx.fill();
+    ctx.fillStyle = '#c98a45'; ctx.beginPath(); ctx.arc(bx - 2, by - 3, 6, 0, 7); ctx.fill();
+  }
+  /* פס התקדמות */
+  ctx.fillStyle = '#4b2a1a'; rr(m.x + 22, m.y + 112, m.w - 44, 16, 8); ctx.fill();
+  ctx.fillStyle = '#ffc247';
+  const pw = (m.w - 48) * (machine.input > 0 ? machine.prog / S.processTime : 0);
+  if (pw > 2){ rr(m.x + 24, m.y + 114, pw, 12, 6); ctx.fill(); }
+  if (S.cooldown > 0){ icSnow(m.x + m.w / 2, m.y + m.h - 18, 1); } else { pips(m.x + 24, m.y + m.h - 18, machine.input, '#f6dc8a', 8); pips(m.x + m.w - 24 - 12 * 13, m.y + m.h - 18, machine.output, '#9a5b24', 8); }
+  ctx.fillStyle = '#4b2a1a'; rr(m.x + 22, m.y + 137, m.w - 44, 10, 5); ctx.fill();
+  ctx.fillStyle = '#e8452e'; rr(m.x + 22, m.y + 139, (m.w - 44) * S.heat, 6, 3); ctx.fill();
+  /* להבה קטנה */
+  const fl = 1 + Math.sin(S.t * 9) * .12;
+  ctx.fillStyle = '#ff8a1e'; ctx.beginPath(); ctx.moveTo(m.x + 30, m.y + 176); ctx.quadraticCurveTo(m.x + 20, m.y + 160, m.x + 30, m.y + 150 / fl + 10); ctx.quadraticCurveTo(m.x + 40, m.y + 162, m.x + 30, m.y + 176); ctx.fill();
+
+  pad(machine.inPad, '#4a90d9', 'icon:pea');
+  pad(machine.outPad, '#58b368', 'icon:ball');
+  const on = Math.min(machine.output, 10);
+  for (let i = 0; i < on; i++){
+    const bx = machine.outPad.x - 22 + (i % 5) * 11, by = machine.outPad.y - 6 - Math.floor(i / 5) * 11;
+    ctx.fillStyle = '#9a5b24'; ctx.beginPath(); ctx.arc(bx, by, 6.5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#c98a45'; ctx.beginPath(); ctx.arc(bx - 1.5, by - 2, 3, 0, 7); ctx.fill();
+  }
+}
+
+/* ---------------- דוכן ---------------- */
+function drawStall(){
+  const st = stall;
+  /* עמודים */
+  ctx.fillStyle = '#76492a'; rr(st.x - 8, st.y - 52, 10, 70, 3); ctx.fill(); rr(st.x + st.w - 2, st.y - 52, 10, 70, 3); ctx.fill();
+  /* דלפק */
+  ext(st.x, st.y, st.w, st.h, 12, 14, '#c58a52', '#7d4f2b');
+  ctx.strokeStyle = 'rgba(100,60,30,.35)'; ctx.lineWidth = 2;
+  for (let i = 1; i < 6; i++){ ctx.beginPath(); ctx.moveTo(st.x + i * st.w / 6, st.y + 40); ctx.lineTo(st.x + i * st.w / 6, st.y + st.h + 12); ctx.stroke(); }
+  ctx.fillStyle = '#d9a46c'; rr(st.x + 6, st.y + 6, st.w - 12, 28, 8); ctx.fill();
+  /* סוכך פסים */
+  const aw = st.w + 36, sw = aw / 8, ay = st.y - 66;
+  for (let i = 0; i < 8; i++){
+    const sx = st.x - 18 + i * sw;
+    ctx.fillStyle = i % 2 ? '#fff6e3' : '#1f9a8a';
+    ctx.beginPath(); ctx.moveTo(sx, ay); ctx.lineTo(sx + sw, ay); ctx.lineTo(sx + sw, ay + 36); ctx.arc(sx + sw / 2, ay + 36, sw / 2, 0, Math.PI); ctx.lineTo(sx, ay + 36); ctx.closePath(); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(25,55,30,.2)'; ctx.fillRect(st.x - 18, ay + 36, aw, 6);
+  ctx.fillStyle = '#157a6d'; rr(st.x - 22, ay - 10, aw + 8, 14, 6); ctx.fill();
+  /* שלט מעל הסוכך */
+  ext(st.x + st.w / 2 - 88, ay + 6, 176, 28, 8, 4, '#c58a52', '#76492a');
+  icCrown(st.x + st.w / 2, ay + 20, 1.2);
+
+  icCoin(st.x + st.w / 2 - 26, st.y + 62, 1.3); ctx.fillStyle = '#fff8ea'; ctx.font = '900 26px Arial'; ctx.textAlign = 'left'; ctx.fillText(S.price, st.x + st.w / 2 - 6, st.y + 71); ctx.textAlign = 'center';
+
+  const n = Math.min(stall.stock, 12);
+  for (let i = 0; i < n; i++){
+    const bx = st.x + 40 + (i % 6) * 26, by = st.y + 30 - Math.floor(i / 6) * 22;
+    ctx.fillStyle = '#9a5b24'; ctx.beginPath(); ctx.arc(bx, by, 11, 0, 7); ctx.fill();
+    ctx.fillStyle = '#c98a45'; ctx.beginPath(); ctx.arc(bx - 3, by - 3, 5, 0, 7); ctx.fill();
+  }
+  ctx.fillStyle = '#e8cf97'; ctx.beginPath(); ctx.ellipse(st.x + st.w - 70, st.y + 26, 30, 16, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#f6e3b4'; ctx.beginPath(); ctx.ellipse(st.x + st.w - 70, st.y + 21, 30, 15, 0, 0, 7); ctx.fill();
+  drawServing(st.x + st.w - 70, st.y + 32, .85);
+  pad(st.dropPad, '#d9483b', 'icon:pita');
+  pad(st.moneyPad, '#d9a000', '');
+
+  /* ערימת מטבעות */
+  const mn = Math.min(Math.ceil(stall.moneyPile / 10), 8);
+  for (let i = 0; i < mn; i++){
+    const cy = stall.moneyPad.y - 4 - i * 7;
+    ctx.fillStyle = '#b8860b'; ctx.beginPath(); ctx.ellipse(stall.moneyPad.x, cy + 4, 26, 9, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = PAL.coin; ctx.beginPath(); ctx.ellipse(stall.moneyPad.x, cy, 26, 9, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.beginPath(); ctx.ellipse(stall.moneyPad.x - 7, cy - 2, 9, 3, 0, 0, 7); ctx.fill();
+  }
+  if (stall.moneyPile > 0){
+    icCoin(stall.moneyPad.x - 16, stall.moneyPad.y + 30, .7); ctx.fillStyle = '#7a5410'; ctx.font = '800 14px Heebo, Arial'; ctx.textAlign = 'left'; ctx.fillText(stall.moneyPile, stall.moneyPad.x - 4, stall.moneyPad.y + 35); ctx.textAlign = 'center';
+  }
+}
+
 function drawServing(x,y,z){
   ctx.save();ctx.translate(x,y);ctx.scale(z,z);
   ctx.fillStyle='#ecce92';ctx.beginPath();ctx.ellipse(0,7,34,21,0,0,7);ctx.fill();
@@ -718,7 +834,12 @@ function drawDashboard(){
   ctx.fillText('יעד הכנסות: ₪'+S.earned+' / ₪'+next,385,79);
   if(S.bonus>0){tag('בונוס כפול · '+Math.ceil(S.bonus)+' שנ׳',243,119,275,'#d89539');}
   if(S.noticeT>0){ctx.fillStyle='#193e34';rr(155,471,450,52,15);ctx.fill();ctx.fillStyle='#fff4d3';ctx.font='900 20px Arial';ctx.fillText(S.notice,380,504);}
-  ctx.fillStyle='#fff4d3';ctx.font='700 16px Arial';ctx.fillText('לקוחות שהלכו: '+S.missed+'   ·   הזז את הדמות בעזרת גרירה או חצים',380,1176);
+  ctx.fillStyle='rgba(25,62,52,.85)'; rr(300,1156,160,30,15); ctx.fill();
+  ctx.fillStyle='#f2c894'; ctx.beginPath(); ctx.arc(330,1171,10,0,7); ctx.fill();
+  ctx.strokeStyle='#8a2a22'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(330,1177,4,Math.PI*1.1,Math.PI*1.9); ctx.stroke();
+  ctx.fillStyle='#2b1d12'; ctx.beginPath(); ctx.arc(326.5,1168,1.5,0,7); ctx.arc(333.5,1168,1.5,0,7); ctx.fill();
+  ctx.fillStyle='#fff4d3'; ctx.font='800 17px Arial'; ctx.textAlign='left'; ctx.fillText(S.missed,350,1177);
+  const hx=412, hy=1171; icArrow(hx,hy-9,.55,-1,'#bde8c7'); icArrow(hx,hy+9,.55,1,'#bde8c7');
 }
 /* שמירה מקומית אופציונלית; המשחק ממשיך גם כשהאחסון חסום */
 const SAVE_KEY = 'falafel-king-progress-v2';
